@@ -1,0 +1,36 @@
+I am building a hackathon project called an Industrial Voice AI Copilot.
+
+The idea:
+Factory workers/technicians can call an AI phone number and ask about machine status, alarms, telemetry, maintenance info, etc.
+
+The system architecture:
+- ThingsBoard Cloud for industrial IoT dashboards and telemetry
+- Node.js backend
+- MCP server for AI tool calling
+- ElevenLabs + Twilio later for voice interaction
+
+This backend should:
+1. Simulate realistic industrial telemetry continuously
+2. Push live telemetry to ThingsBoard devices
+3. Generate realistic alarms/warnings
+4. Maintain machine state/history
+5. Expose MCP-compatible tools/APIs
+6. Feel like a real smart factory system
+
+The backend should simulate:
+- Boiler systems
+- Motors
+- Conveyor systems
+- Cooling pumps
+
+Use realistic industrial telemetry:
+- pressure (PSI)
+- temperature (°C)
+- vibration
+- RPM
+- load percentage
+- running/warning/critical/offline states
+
+The simulator should continuously fluctuate telemetry realistically and occasionally generate abnormal states and alarms.
+
+The project should look realistic enough for hackathon judges and mimic a real industrial monitoring environment.
