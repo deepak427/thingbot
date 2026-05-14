@@ -98,7 +98,7 @@ class IndustrialWebhookServer {
         // ElevenLabs Webhook Endpoints
 
         // 1. Get Factory Status
-        app.post("/webhook/get_factory_status", (req, res) => {
+        app.get("/webhook/get_factory_status", (req, res) => {
             console.error("Webhook called: get_factory_status");
             const summary = this.assets.map(a => a.getStatusSummary());
             res.json({
