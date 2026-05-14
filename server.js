@@ -175,7 +175,7 @@ class IndustrialWebhookServer {
         app.listen(PORT, () => {
             console.error(`Industrial Webhook Server listening on port ${PORT}`);
             console.error(`Endpoints available:`);
-            console.error(`- POST /webhook/get_factory_status`);
+            console.error(`- GET /webhook/get_factory_status`);
             console.error(`- POST /webhook/get_machine_details`);
             console.error(`- POST /webhook/reset_machine_alarms`);
             console.error(`- POST /webhook/set_machine_status`);

@@ -1,0 +1,26 @@
+---
+description: Thingbot production constraints — preserve HTTP and payload contracts
+alwaysApply: true
+---
+
+# Thingbot — production stability
+
+This repository backs a **deployed** service consumed by a **production frontend** and voice/agent integrations.
+
+## Do not change without explicit product approval
+
+- **Webhook paths**: `/webhook/get_factory_status`, `/webhook/get_machine_details`, `/webhook/reset_machine_alarms`, `/webhook/set_machine_status`, `/health`
+- **HTTP methods** (for example `get_factory_status` is **GET**)
+- **Request JSON field names**: `machineId`, `status`
+- **Allowed `status` values**: `running`, `offline`
+- **Response JSON shapes and field names** consumed by clients (for example `status`, `factory_summary`, `machine_details`, `message`)
+
+## Safe changes
+
+- Documentation, README, `.env.example`, logging text, internal comments
+- `.cursor` rules and editor config
+- `package.json` **metadata** and **scripts** if runtime entry remains `node server.js` equivalent
+
+## When changing behavior is unavoidable
+
+- Document the breaking change, version the API or add new routes alongside old ones, and coordinate with frontend or integration owners before removing or renaming anything.
