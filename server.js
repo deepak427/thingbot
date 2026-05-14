@@ -1,12 +1,9 @@
-const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
 const express = require('express');
-const { SSEServerTransport } = require("@modelcontextprotocol/sdk/server/sse.js");
-const { CallToolRequestSchema, ListToolsRequestSchema } = require("@modelcontextprotocol/sdk/types.js");
 require('dotenv').config();
 const mqtt = require('mqtt');
 const { Boiler, Motor, Conveyor, CoolingPump } = require('./assets');
 
-class IndustrialMCPServer {
+class IndustrialWebhookServer {
     constructor() {
         this.assets = [
             new Boiler('boiler-01', 'High Pressure Boiler'),
@@ -17,109 +14,7 @@ class IndustrialMCPServer {
 
         this.clients = new Map(); // asset.id -> mqttClient
         this.setupMQTT();
-
-        this.server = new Server({
-            name: "industrial-copilot",
-            version: "1.0.0",
-        }, {
-            capabilities: {
-                tools: {},
-            },
-        });
-
-        this.setupTools();
         this.startSimulation();
-    }
-
-    setupTools() {
-        this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-            tools: [
-                {
-                    name: "get_factory_status",
-                    description: "Get summary of all machines in the factory",
-                    inputSchema: { type: "object", properties: {} }
-                },
-                {
-                    name: "get_machine_details",
-                    description: "Get detailed telemetry and alarms for a specific machine",
-                    inputSchema: {
-                        type: "object",
-                        properties: {
-                            machineId: { type: "string", description: "ID of the machine (e.g., boiler-01, motor-01, conv-01, pump-01)" }
-                        },
-                        required: ["machineId"]
-                    }
-                },
-                {
-                    name: "reset_machine_alarms",
-                    description: "Clear all active alarms for a specific machine. Equivalent to hitting the reset button on the dashboard.",
-                    inputSchema: {
-                        type: "object",
-                        properties: {
-                            machineId: { type: "string", description: "ID of the machine" }
-                        },
-                        required: ["machineId"]
-                    }
-                },
-                {
-                    name: "set_machine_status",
-                    description: "Turn a machine on (running) or off (offline).",
-                    inputSchema: {
-                        type: "object",
-                        properties: {
-                            machineId: { type: "string", description: "ID of the machine" },
-                            status: { type: "string", enum: ["running", "offline"], description: "The new status to set" }
-                        },
-                        required: ["machineId", "status"]
-                    }
-                }
-            ]
-        }));
-
-        this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-            const { name, arguments: args } = request.params;
-
-            if (name === "get_factory_status") {
-                return {
-                    content: [{ type: "text", text: JSON.stringify(this.assets.map(a => a.getStatusSummary()), null, 2) }]
-                };
-            }
-
-            if (name === "get_machine_details") {
-                const asset = this.assets.find(a => a.id === args.machineId);
-                if (!asset) return { content: [{ type: "text", text: "Machine not found. Valid IDs are: boiler-01, motor-01, conv-01, pump-01" }], isError: true };
-                return {
-                    content: [{ type: "text", text: JSON.stringify(asset.getStatusSummary(), null, 2) }]
-                };
-            }
-
-            if (name === "reset_machine_alarms") {
-                const asset = this.assets.find(a => a.id === args.machineId);
-                if (!asset) return { content: [{ type: "text", text: "Machine not found" }], isError: true };
-                asset.clearAlarms();
-                
-                // Immediately push updated attributes to reflect on dashboard
-                this.pushTelemetry();
-                
-                return {
-                    content: [{ type: "text", text: `Successfully cleared alarms for ${asset.name}.` }]
-                };
-            }
-
-            if (name === "set_machine_status") {
-                const asset = this.assets.find(a => a.id === args.machineId);
-                if (!asset) return { content: [{ type: "text", text: "Machine not found" }], isError: true };
-                
-                asset.status = args.status;
-                this.pushTelemetry();
-
-                return {
-                    content: [{ type: "text", text: `Successfully set ${asset.name} status to ${args.status}.` }]
-                };
-            }
-
-            throw new Error(`Tool not found: ${name}`);
-        });
     }
 
     setupMQTT() {
@@ -143,7 +38,6 @@ class IndustrialMCPServer {
             
             client.on('connect', () => {
                 console.error(`Connected to ThingsBoard: ${asset.name}`);
-                // Subscribe to RPC commands
                 client.subscribe('v1/devices/me/rpc/request/+');
             });
 
@@ -153,7 +47,6 @@ class IndustrialMCPServer {
                     const data = JSON.parse(message.toString());
                     console.error(`Received RPC [${asset.name}]:`, data);
 
-                    // Handle commands
                     if (data.method === 'resetAlarms') {
                         asset.clearAlarms();
                         client.publish(`v1/devices/me/rpc/response/${requestId}`, JSON.stringify({ result: "success" }));
@@ -177,11 +70,9 @@ class IndustrialMCPServer {
             const client = this.clients.get(asset.id);
             if (!client || !client.connected) return;
 
-            // 1. Send Telemetry (Live Graph Data)
             const telemetryTopic = 'v1/devices/me/telemetry';
             client.publish(telemetryTopic, JSON.stringify(asset.telemetry));
 
-            // 2. Send Attributes (Static/State Data for Alarms)
             const attributeTopic = 'v1/devices/me/attributes';
             const attributes = {
                 status: asset.status,
@@ -200,29 +91,97 @@ class IndustrialMCPServer {
         }, process.env.UPDATE_INTERVAL_MS || 5000);
     }
 
-    async run() {
+    async start() {
         const app = express();
-        let transport;
+        app.use(express.json());
 
-        app.get("/sse", async (req, res) => {
-            transport = new SSEServerTransport("/message", res);
-            await this.server.connect(transport);
-            console.error("ElevenLabs connected to MCP Server via SSE");
+        // ElevenLabs Webhook Endpoints
+
+        // 1. Get Factory Status
+        app.post("/webhook/get_factory_status", (req, res) => {
+            console.error("Webhook called: get_factory_status");
+            const summary = this.assets.map(a => a.getStatusSummary());
+            res.json({
+                status: "success",
+                factory_summary: summary
+            });
         });
 
-        app.post("/message", async (req, res) => {
-            if (!transport) {
-                return res.status(400).send("SSE connection not established yet");
+        // 2. Get Machine Details
+        app.post("/webhook/get_machine_details", (req, res) => {
+            const { machineId } = req.body;
+            console.error(`Webhook called: get_machine_details for ${machineId}`);
+            
+            const asset = this.assets.find(a => a.id === machineId);
+            if (!asset) {
+                return res.status(404).json({ 
+                    status: "error", 
+                    message: "Machine not found. Valid IDs: boiler-01, motor-01, conv-01, pump-01" 
+                });
             }
-            await transport.handlePostMessage(req, res);
+
+            res.json({
+                status: "success",
+                machine_details: asset.getStatusSummary()
+            });
         });
+
+        // 3. Reset Machine Alarms
+        app.post("/webhook/reset_machine_alarms", (req, res) => {
+            const { machineId } = req.body;
+            console.error(`Webhook called: reset_machine_alarms for ${machineId}`);
+
+            const asset = this.assets.find(a => a.id === machineId);
+            if (!asset) {
+                return res.status(404).json({ status: "error", message: "Machine not found" });
+            }
+
+            asset.clearAlarms();
+            this.pushTelemetry();
+
+            res.json({
+                status: "success",
+                message: `Successfully cleared alarms for ${asset.name}.`
+            });
+        });
+
+        // 4. Set Machine Status
+        app.post("/webhook/set_machine_status", (req, res) => {
+            const { machineId, status } = req.body;
+            console.error(`Webhook called: set_machine_status for ${machineId} to ${status}`);
+
+            const asset = this.assets.find(a => a.id === machineId);
+            if (!asset) {
+                return res.status(404).json({ status: "error", message: "Machine not found" });
+            }
+
+            if (!['running', 'offline'].includes(status)) {
+                return res.status(400).json({ status: "error", message: "Invalid status. Use 'running' or 'offline'." });
+            }
+
+            asset.status = status;
+            this.pushTelemetry();
+
+            res.json({
+                status: "success",
+                message: `Successfully set ${asset.name} status to ${status}.`
+            });
+        });
+
+        // Health check
+        app.get("/health", (req, res) => res.send("Industrial Webhook Server Active"));
 
         const PORT = process.env.PORT || 3000;
         app.listen(PORT, () => {
-            console.error(`Industrial MCP Server listening on port ${PORT} for ElevenLabs`);
+            console.error(`Industrial Webhook Server listening on port ${PORT}`);
+            console.error(`Endpoints available:`);
+            console.error(`- POST /webhook/get_factory_status`);
+            console.error(`- POST /webhook/get_machine_details`);
+            console.error(`- POST /webhook/reset_machine_alarms`);
+            console.error(`- POST /webhook/set_machine_status`);
         });
     }
 }
 
-const server = new IndustrialMCPServer();
-server.run().catch(console.error);
+const server = new IndustrialWebhookServer();
+server.start().catch(console.error);

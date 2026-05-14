@@ -1,0 +1,12 @@
+2. How to Test It Like a Pro
+Once you deploy to Render.com, Render will give you a public URL.
+
+In the ElevenLabs Integration URL box, paste the Render URL and add /sse (e.g., https://your-app-name.onrender.com/sse).
+Add this integration to your ElevenLabs Voice Agent.
+The Ultimate Hackathon Demo Script: Put your ThingsBoard dashboard on half of your screen, and the ElevenLabs Voice Agent on the other half.
+
+You speak: "Hey Copilot, give me a quick status update on the factory floor." (AI will read the get_factory_status tool and tell you which machines have alarms).
+You speak: "Okay, what is the exact error on the Cooling Pump?" (AI will use get_machine_details and read the error message).
+You speak: "That's dangerous. Please shut down the cooling pump immediately." (AI will use set_machine_status to send 'offline'. Look at your Dashboard—the Coolant Flow gauge will instantly drop to zero!)
+You speak: "Great. Now reset the alarms on the Conveyor." (AI uses reset_machine_alarms. Watch the error disappear from your dashboard table!)
+If you follow that script, the judges will see a flawless, fully-autonomous Voice AI controlling a live industrial system. Good luck!
